@@ -26,7 +26,7 @@ model_pipeline = pipeline("text-generation", model=model, tokenizer=tokenizer)
 # Initialize LangChain components
 memory = ChatMessageHistory()
 print("MEMORY LOADED")
-prompt_template = PromptTemplate(template="Answer the following question based on the context: {input}")
+prompt_template = PromptTemplate(template="Answer the following prompt based on the context: {input}")
 
 # Initialize FAISS index
 d = model.config.hidden_size  # dimension of the model embeddings
