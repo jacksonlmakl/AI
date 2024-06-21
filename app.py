@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from transformers import pipeline, AutoTokenizer, AutoModel
+from transformers import pipeline, AutoTokenizer, LlamaForCausalLM
 from langchain_core.prompts import PromptTemplate
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables import Runnable
@@ -9,15 +9,18 @@ import threading
 import time
 import faiss
 import numpy as np
+import sqlite3
 
 app = Flask(__name__)
 print("APP LOADED")
 
 # Initialize the Hugging Face model
 hf_token = os.getenv('HUGGINGFACE_API_KEY')
-model_name = "meta-llama/Meta-Llama-3-8B"
+# model_name = "meta-llama/Meta-Llama-3-8B"
+model_name = "meta-llama/Llama-2-7B-hf"
 tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
-model = AutoModel.from_pretrained(model_name, token=hf_token)
+tokenizer.pad_token = tokenizer.eos_token  # Add padding token
+model = LlamaForCausalLM.from_pretrained(model_name, token=hf_token)
 model_pipeline = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
 # Initialize LangChain components
@@ -28,6 +31,26 @@ prompt_template = PromptTemplate(template="Answer the following question based o
 # Initialize FAISS index
 d = model.config.hidden_size  # dimension of the model embeddings
 index = faiss.IndexFlatL2(d)
+print("INITIALIZED FAISS INDEX")
+
+# Initialize SQLite database
+def initialize_db(db_path="embeddings.db"):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS embeddings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vector BLOB
+        )
+    """)
+    conn.commit()
+    return conn
+
+def store_embeddings(conn, embeddings):
+    cursor = conn.cursor()
+    for embedding in embeddings:
+        cursor.execute("INSERT INTO embeddings (vector) VALUES (?)", (embedding.tobytes(),))
+    conn.commit()
 
 # Load local information files and convert to embeddings
 def load_information_files(directory="information"):
@@ -38,14 +61,29 @@ def load_information_files(directory="information"):
                 info_data.append(file.read())
     return info_data
 
+def load_embeddings(conn):
+    cursor = conn.cursor()
+    cursor.execute("SELECT vector FROM embeddings")
+    rows = cursor.fetchall()
+    embeddings = [np.frombuffer(row[0], dtype=np.float32) for row in rows]
+    return np.vstack(embeddings) if embeddings else np.array([])
+
+# Load or calculate embeddings
 info_data = load_information_files()
-info_embeddings = [model(**tokenizer(data, return_tensors="pt", truncation=True, padding=True)).last_hidden_state.mean(dim=1).detach().numpy() for data in info_data]
-info_embeddings = np.vstack(info_embeddings)
-index.add(info_embeddings)
+conn = initialize_db()
+
+embeddings = load_embeddings(conn)
+if len(embeddings) == 0 and info_data:  # Calculate and save embeddings if not already saved
+    embeddings = [model(**tokenizer(data, return_tensors="pt", padding=True)).last_hidden_state.mean(dim=1).detach().numpy() for data in info_data]
+    embeddings = np.vstack(embeddings)
+    store_embeddings(conn, embeddings)
+
+if len(embeddings) > 0:  # Add embeddings to FAISS index if they exist
+    index.add(embeddings)
 
 # Function to retrieve relevant context using FAISS
 def retrieve_context(query):
-    query_embedding = model(**tokenizer(query, return_tensors="pt", truncation=True, padding=True)).last_hidden_state.mean(dim=1).detach().numpy()
+    query_embedding = model(**tokenizer(query, return_tensors="pt", padding=True)).last_hidden_state.mean(dim=1).detach().numpy()
     D, I = index.search(query_embedding, k=5)  # Retrieve top 5 relevant contexts
     return [info_data[i] for i in I[0]]
 
