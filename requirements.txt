@@ -1,0 +1,8 @@
+Flask==2.0.1
+transformers==4.9.1
+tokenizers==0.10.3
+langchain
+six
+langchain-community
+langchain-llm
+dotenv
