@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  ai-chatbot:
+    build: .
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env

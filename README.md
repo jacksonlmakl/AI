@@ -1,25 +1,26 @@
-### Explanation
+# AI Chatbot with Contextual Memory
 
-1. **Imports**:
-   - Import `ChatMessageHistory` from `langchain.memory` to handle chat history.
+This project is an AI bot application that uses the LLaMA model for text generation, integrated with FAISS for contextual memory retrieval. The chatbot retains conversation context and can refer back to previous interactions.
 
-2. **Initialization**:
-   - Use `ChatMessageHistory` for managing memory. This class provides methods for adding and retrieving chat messages.
+## Features
 
-3. **Memory Handling**:
-   - In the `invoke` method of `CustomChain`, retrieve messages from `ChatMessageHistory` to maintain the context.
-   - Add user and AI messages to `ChatMessageHistory` after generating a response.
+- Text generation using the LLaMA model
+- Contextual memory using FAISS
+- Periodic saving of memory to long-term storage
+- API endpoints for interacting with the bot
 
-4. **Cache Management**:
-   - Save and load memory from `memory_cache.json` to persist chat history across sessions.
+## Requirements
 
-### Key Concepts
+- Python 3.9+
+- Hugging Face Transformers
+- LangChain
+- Flask
+- FAISS
+- SQLite3
 
-- **Reading and Writing Memory**: Memory is read before executing the core logic and written after generating the response to maintain continuity in conversations.
-- **Memory Structure**: Messages can be stored as a list of `ChatMessages` and queried as needed.
+## Installation
 
-### References
-- LangChain Memory Management: [LangChain Documentation](https://python.langchain.com/v0.1/docs/modules/memory/chat_messages/)
-- Using ChatMessageHistory: [LangChain Chat Messages](https://python.langchain.com/v0.1/docs/modules/memory/chat_messages/)
-
-By following this approach, you can effectively manage memory in your LangChain application, enabling your conversational AI to maintain context and provide more coherent responses over multiple interactions.
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/jacksonlmakl/AI.git
+   cd AI

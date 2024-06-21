@@ -1,0 +1,9 @@
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore local environment variables
+.env
+
+# Ignore log files
+*.log
