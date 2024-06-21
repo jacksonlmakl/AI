@@ -10,6 +10,9 @@ import time
 import faiss
 import numpy as np
 import sqlite3
+from  dotenv import load_dotenv
+if __name__ == '__main__':
+    load_dotenv()
 
 app = Flask(__name__)
 print("APP LOADED")
