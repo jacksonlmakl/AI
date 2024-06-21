@@ -8,7 +8,8 @@ import os
 import threading
 import time
 # from dotenv import load_dotenv
-import os 
+
+# load_dotenv()
 
 app = Flask(__name__)
 print("APP LOADED")
@@ -16,9 +17,9 @@ print("APP LOADED")
 # Initialize the Hugging Face model
 hf_token = os.getenv('HUGGINGFACE_API_KEY')
 
-# model_name = "meta-llama/Meta-Llama-3-8B"  
-model_name = "meta-llama/Meta-Llama-3-8B" 
-model_pipeline = pipeline("text-generation", model=model_name, token=hf_token)
+# Make sure the model identifier is correct and accessible with your token
+model_name = "meta-llama/Meta-Llama-3-8B"  # Adjust if needed
+model_pipeline = pipeline("text-generation", model=model_name, use_auth_token=hf_token)
 
 # Initialize LangChain components
 memory = ChatMessageHistory()
