@@ -17,7 +17,7 @@ print("APP LOADED")
 hf_token = os.getenv('HUGGINGFACE_API_KEY')
 
 # model_name = "meta-llama/Meta-Llama-3-8B"  # You can replace this with any other model
-model_name = "gpt2"  # You can replace this with any other model
+model_name = "meta-llama/Meta-Llama-3-8B"  # You can replace this with any other model
 model_pipeline = pipeline("text-generation", model=model_name, token=hf_token)
 
 # Initialize LangChain components
