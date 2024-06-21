@@ -6,3 +6,4 @@ six
 langchain-community
 langchain-llm
 dotenv
+faiss-cpu

@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from transformers import pipeline
+from transformers import pipeline, AutoTokenizer, AutoModel
 from langchain_core.prompts import PromptTemplate
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables import Runnable
@@ -7,42 +7,92 @@ import json
 import os
 import threading
 import time
-# from dotenv import load_dotenv
-
-# load_dotenv()
+import faiss
+import numpy as np
 
 app = Flask(__name__)
 print("APP LOADED")
 
 # Initialize the Hugging Face model
 hf_token = os.getenv('HUGGINGFACE_API_KEY')
-
-# Make sure the model identifier is correct and accessible with your token
-model_name = "meta-llama/Meta-Llama-3-8B"  # Adjust if needed
-model_pipeline = pipeline("text-generation", model=model_name, use_auth_token=hf_token)
+model_name = "meta-llama/Meta-Llama-3-8B"
+tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
+model = AutoModel.from_pretrained(model_name, token=hf_token)
+model_pipeline = pipeline("text-generation", model=model, tokenizer=tokenizer)
 
 # Initialize LangChain components
 memory = ChatMessageHistory()
 print("MEMORY LOADED")
 prompt_template = PromptTemplate(template="Answer the following question based on the context: {input}")
 
+# Initialize FAISS index
+d = model.config.hidden_size  # dimension of the model embeddings
+index = faiss.IndexFlatL2(d)
+
+# Load local information files and convert to embeddings
+def load_information_files(directory="information"):
+    info_data = []
+    for filename in os.listdir(directory):
+        if filename.endswith(".txt"):
+            with open(os.path.join(directory, filename), 'r') as file:
+                info_data.append(file.read())
+    return info_data
+
+info_data = load_information_files()
+info_embeddings = [model(**tokenizer(data, return_tensors="pt", truncation=True, padding=True)).last_hidden_state.mean(dim=1).detach().numpy() for data in info_data]
+info_embeddings = np.vstack(info_embeddings)
+index.add(info_embeddings)
+
+# Function to retrieve relevant context using FAISS
+def retrieve_context(query):
+    query_embedding = model(**tokenizer(query, return_tensors="pt", truncation=True, padding=True)).last_hidden_state.mean(dim=1).detach().numpy()
+    D, I = index.search(query_embedding, k=5)  # Retrieve top 5 relevant contexts
+    return [info_data[i] for i in I[0]]
+
+# Function to save memory cache to long-term storage
+def save_memory_to_long_term(memory_cache, file_path):
+    with open(file_path, 'w') as file:
+        for msg in memory_cache:
+            file.write(f"User: {msg['user']}\n")
+            file.write(f"AI: {msg['ai']}\n\n")
+
+# Function to check and save cache if it exceeds 100MB
+def check_and_save_cache():
+    cache_file = "memory_cache.json"
+    max_size = 100 * 1024 * 1024  # 100MB
+
+    if os.path.exists(cache_file) and os.path.getsize(cache_file) > max_size:
+        with open(cache_file, 'r') as f:
+            memory_cache = json.load(f)
+        
+        # Save to long-term memory
+        long_term_file = f"information/memory_{int(time.time())}.txt"
+        save_memory_to_long_term(memory_cache, long_term_file)
+        
+        # Clear memory cache
+        with open(cache_file, 'w') as f:
+            json.dump([], f)
+
 # Create a chain using Runnable
 class CustomChain(Runnable):
-    def __init__(self, model_pipeline, prompt_template, memory):
+    def __init__(self, model_pipeline, prompt_template, memory, index):
         self.model_pipeline = model_pipeline
         self.prompt_template = prompt_template
         self.memory = memory
+        self.index = index
 
     def invoke(self, input):
         # Use memory to load context
         context = [message.content for message in self.memory.messages]
-        full_prompt = self.prompt_template.format(input=input, context=context)
+        retrieved_contexts = retrieve_context(input)
+        combined_context = ' '.join(context + retrieved_contexts)
+        full_prompt = self.prompt_template.format(input=input, context=combined_context)
         response = self.model_pipeline(full_prompt, max_length=50, num_return_sequences=1)
         self.memory.add_user_message(input)
         self.memory.add_ai_message(response[0]['generated_text'])
         return response[0]['generated_text']
 
-chain = CustomChain(model_pipeline=model_pipeline, prompt_template=prompt_template, memory=memory)
+chain = CustomChain(model_pipeline=model_pipeline, prompt_template=prompt_template, memory=memory, index=index)
 
 # Load memory from cache if it exists
 cache_file = "memory_cache.json"
@@ -54,6 +104,7 @@ if os.path.exists(cache_file):
 # Function to save memory periodically
 def save_memory_periodically():
     while True:
+        check_and_save_cache()
         with open(cache_file, "w") as f:
             json.dump([msg.to_dict() for msg in memory.messages], f)
         time.sleep(60)  # Save every 60 seconds
