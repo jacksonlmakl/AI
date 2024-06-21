@@ -16,8 +16,8 @@ print("APP LOADED")
 
 # Initialize the Hugging Face model
 hf_token = os.getenv('HUGGINGFACE_API_KEY')
-# model_name = "meta-llama/Meta-Llama-3-8B"
-model_name = "meta-llama/Llama-2-7B-hf"
+model_name = "meta-llama/Meta-Llama-3-8B"
+# model_name = "meta-llama/Llama-2-7B-hf"
 tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
 tokenizer.pad_token = tokenizer.eos_token  # Add padding token
 model = LlamaForCausalLM.from_pretrained(model_name, token=hf_token)
