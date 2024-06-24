@@ -21,8 +21,6 @@ print("APP LOADED")
 # Initialize the Hugging Face model
 hf_token = os.getenv('HUGGINGFACE_API_KEY')
 model_name = "meta-llama/Meta-Llama-3-8B"
-# model_name = "meta-llama/Llama-2-7B-hf"
-# model_name = "gpt2"
 tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
 tokenizer.pad_token = tokenizer.eos_token  # Add padding token
 model = LlamaForCausalLM.from_pretrained(model_name, token=hf_token)
@@ -76,12 +74,11 @@ def load_embeddings(conn):
 # Load or calculate embeddings
 info_data = load_information_files()
 conn = initialize_db()
-
+print("DB INITIALIZED")
 def get_embedding(data):
-    max_length = 1024
-    inputs = tokenizer(data, return_tensors="pt", padding=True, truncation=True, max_length=max_length)
+    inputs = tokenizer(data, return_tensors="pt", padding=True, truncation=True)
     outputs = model(**inputs)
-    embeddings = outputs.logits.mean(dim=1).detach().numpy()
+    embeddings = outputs.last_hidden_state.mean(dim=1).detach().numpy()
     return embeddings
 
 embeddings = load_embeddings(conn)
@@ -95,12 +92,10 @@ print(f"Shape of embeddings: {embeddings.shape}")
 print(f"Expected dimension: {d}")
 
 if len(embeddings) > 0:  # Add embeddings to FAISS index if they exist
-    try:
+    if embeddings.shape[1] == d:
         index.add(embeddings)
-    except AssertionError as e:
-        print(f"AssertionError: {e}")
-        print(f"Embeddings dimension: {embeddings.shape[1]}")
-        print(f"FAISS index dimension: {d}")
+    else:
+        print(f"Error: Embeddings dimension: {embeddings.shape[1]} does not match FAISS index dimension: {d}")
 
 # Function to retrieve relevant context using FAISS
 def retrieve_context(query):
@@ -152,14 +147,14 @@ class CustomChain(Runnable):
         return response[0]['generated_text']
 
 chain = CustomChain(model_pipeline=model_pipeline, prompt_template=prompt_template, memory=memory, index=index)
-
+print("CHAIN LOADED")
 # Load memory from cache if it exists
 cache_file = "memory_cache.json"
 if os.path.exists(cache_file):
     with open(cache_file, "r") as f:
         cached_memory = json.load(f)
         memory.messages = [ChatMessageHistory.from_dict(msg) for msg in cached_memory]
-
+print("CACHE LOADED")
 # Function to save memory periodically
 def save_memory_periodically():
     while True:
@@ -172,16 +167,22 @@ def save_memory_periodically():
 thread = threading.Thread(target=save_memory_periodically)
 thread.daemon = True  # Daemonize thread to ensure it exits when the main program does
 thread.start()
-
+print("DAEMON THREAD STARTED")
 @app.route('/api/prompt', methods=['POST'])
 def handle_prompt():
     data = request.json
     prompt = data.get('prompt', '')
+    print(f"PROMPT RECIEVED: {prompt}")
     if not prompt:
         return jsonify({'error': 'No prompt provided'}), 400
 
     response = chain.invoke(prompt)
+
+    print("RESPONSE: ", response)
+
+
     return jsonify({'response': response})
 
 if __name__ == '__main__':
+    print("APP STARTING")
     app.run(host='0.0.0.0', port=5000, debug=True)
