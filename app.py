@@ -10,7 +10,8 @@ import time
 import faiss
 import numpy as np
 import sqlite3
-from  dotenv import load_dotenv
+from dotenv import load_dotenv
+
 if __name__ == '__main__':
     load_dotenv()
 
@@ -21,6 +22,7 @@ print("APP LOADED")
 hf_token = os.getenv('HUGGINGFACE_API_KEY')
 model_name = "meta-llama/Meta-Llama-3-8B"
 # model_name = "meta-llama/Llama-2-7B-hf"
+# model_name = "gpt2"
 tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
 tokenizer.pad_token = tokenizer.eos_token  # Add padding token
 model = LlamaForCausalLM.from_pretrained(model_name, token=hf_token)
@@ -34,7 +36,7 @@ prompt_template = PromptTemplate(template="Answer the following prompt based on 
 # Initialize FAISS index
 d = model.config.hidden_size  # dimension of the model embeddings
 index = faiss.IndexFlatL2(d)
-print("INITIALIZED FAISS INDEX")
+print(f"INITIALIZED FAISS INDEX with dimension: {d}")
 
 # Initialize SQLite database
 def initialize_db(db_path="embeddings.db"):
@@ -75,18 +77,34 @@ def load_embeddings(conn):
 info_data = load_information_files()
 conn = initialize_db()
 
+def get_embedding(data):
+    max_length = 1024
+    inputs = tokenizer(data, return_tensors="pt", padding=True, truncation=True, max_length=max_length)
+    outputs = model(**inputs)
+    embeddings = outputs.logits.mean(dim=1).detach().numpy()
+    return embeddings
+
 embeddings = load_embeddings(conn)
 if len(embeddings) == 0 and info_data:  # Calculate and save embeddings if not already saved
-    embeddings = [model(**tokenizer(data, return_tensors="pt", padding=True)).last_hidden_state.mean(dim=1).detach().numpy() for data in info_data]
+    embeddings = [get_embedding(data) for data in info_data]
     embeddings = np.vstack(embeddings)
     store_embeddings(conn, embeddings)
 
+# Debugging prints
+print(f"Shape of embeddings: {embeddings.shape}")
+print(f"Expected dimension: {d}")
+
 if len(embeddings) > 0:  # Add embeddings to FAISS index if they exist
-    index.add(embeddings)
+    try:
+        index.add(embeddings)
+    except AssertionError as e:
+        print(f"AssertionError: {e}")
+        print(f"Embeddings dimension: {embeddings.shape[1]}")
+        print(f"FAISS index dimension: {d}")
 
 # Function to retrieve relevant context using FAISS
 def retrieve_context(query):
-    query_embedding = model(**tokenizer(query, return_tensors="pt", padding=True)).last_hidden_state.mean(dim=1).detach().numpy()
+    query_embedding = get_embedding(query)
     D, I = index.search(query_embedding, k=5)  # Retrieve top 5 relevant contexts
     return [info_data[i] for i in I[0]]
 

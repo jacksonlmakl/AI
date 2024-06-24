@@ -1,25 +1,24 @@
-# Use an official Python runtime as a parent image
+# Use the official Python image from the Docker Hub
 FROM python:3.9-slim
 
-# Set the working directory in the container
+# Set environment variables to avoid Python from writing .pyc files
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+
+# Set the working directory inside the container
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libsqlite3-dev \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Copy the requirements file into the container
+COPY requirements.txt /app/
 
-# Copy the current directory contents into the container at /app
-COPY . /app
-
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir --upgrade pip
+# Install the dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose port 5000 for the Flask app
+# Copy the rest of the application code into the container
+COPY . /app/
+
+# Expose the port the app runs on
 EXPOSE 5000
 
-# Run app.py when the container launches
+# Run the application
 CMD ["python", "app.py"]
